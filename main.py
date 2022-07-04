@@ -34,7 +34,9 @@ def pings():
     user = get_all_users(datetime.utcnow())
 
     def ping_users():
-        return ', '.join([f"<@{i}>" for i in user])
+        pinged_users = [f"<@{i}>" for i in user]
+        if pinged_users:
+            await channel.send(', '.join(pinged_users))
 
     job = bs.add_job(ping_users, 'interval', hour=1)
     bs.start()
