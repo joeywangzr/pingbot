@@ -1,72 +1,94 @@
 import json
 from datetime import datetime
-from threading import Thread
+import os
+from discord.ext import commands, tasks
 
-from apscheduler.schedulers.background import BackgroundScheduler
-from discord.ext import commands
+from token import token
 
-token = ""
+bot = commands.Bot(command_prefix=["!"])
 
-bot = commands.Bot(command_prefix=["."])
-
-channel = bot.get_channel(993022827848544406)
-
-with open("times.txt", "r") as t:
-    users = json.load(t)
-
-
-def get_all_users(key):
-    values = list(users.values())
-    keys = list(users.keys())
-    user = []
-    for i in range(values):
-        if keys[i] == key:
-            user.append(values[i])
-    return user
-
-
-def convert_utc(time):
-    return datetime.utcfromtimestamp(time)
-
-
-def pings():
-    bs = BackgroundScheduler()
-    user = get_all_users(datetime.utcnow())
-
-    def ping_users():
-        pinged_users = [f"<@{i}>" for i in user]
-        if pinged_users:
-            await channel.send(', '.join(pinged_users))
-
-    job = bs.add_job(ping_users, 'interval', hour=1)
-    bs.start()
-    while True:
+def format_time(time):
+    try:
+        return(str(datetime.strptime(time, '%H:%M:%S').time())[:-3])
+    except:
         try:
-            user = users[datetime.utcnow()]
+            return(str(datetime.strptime(time, '%H:%M').time())[:-3])
         except:
-            pass
+            return(str(datetime.strptime(time, '%H').time())[:-3])
 
+@bot.event
+async def on_ready():
+    print('Bot ready!')
+    global all_users
+    global channel
+    channel = bot.get_channel(993022827848544406)
 
-@bot.command(aliases=["u"])
-async def update(ctx, time):
-    author = int(ctx.author.id)
-    utc_time = convert_utc(time)
-    keys = list(users.keys())
-    values = list(users.values())
-    for i in range(keys):
-        if values[i] == author:
-            keys[i] = utc_time
+    if os.path.getsize("times.txt") == 0:
+        print("File is empty")
+
+        # useful piece of code for future? gets all members in guild
+        # guild = bot.get_guild(911121541717196810)
+        # for member in guild.members:
+        #     username = str(member.id)
+        #     global all_users
+        #     all_users = {}
+        #     all_users[username] = ""
+        # print(all_users)
+
+        with open("times.txt", "w") as t:
+            all_users = {'': '1008425387199570041'}
+            t.write(json.dumps(all_users))
+            print(all_users)
     else:
-        users[utc_time] = author
-    with open("times.txt", "w") as t:
-        t.write(json.dumps(users))
-    await ctx.send(f"Your ping time was changed to {time}")
+        with open("times.txt", "r") as t:
+            all_users = json.load(t)
+            print(all_users)
+
+    checkTime.start()
 
 
-def run():
-    bot.run(token)
+@bot.command(aliases=["time"])
+async def update(ctx, time):
+    author = str(ctx.author.id)
+    try:
+        # to do: add all users to text document
+        global all_users
+        values = all_users.values()
+        keys = all_users.keys()
+        formatted_time = format_time(str(time))
+        if author in values:
+            for i in keys:
+                if all_users[i] == author:
+                    del all_users[i]
+                    break
 
+        all_users.update({str(formatted_time):str(author)})
+        await ctx.send('Time modified!')
+        print(all_users)
+
+        # clear text file
+        open('times.txt', 'w').close()
+        # update stored file
+        with open("times.txt", "w") as t:
+            t.write(json.dumps(all_users))
+
+    except:
+        await ctx.send('Incorrect formatting')
+
+@tasks.loop(seconds = 60)
+async def checkTime():
+    global all_users
+    keys = all_users.keys()
+    now = datetime.now()
+    current_time = now.strftime("%H:%M")
+    print(current_time)
+    if str(current_time) in keys:
+        await ping_user(all_users[current_time])
+
+# if time reached, repeat for 1 hour until command run to stop
+async def ping_user(id):
+    global channel
+    await channel.send("<@" + str(id) + ">" + ", you have to do Leetcode!")
 
 if __name__ == "__main__":
-    Thread(target=pings).start()
-    Thread(target=run).start()
+    bot.run(token)
